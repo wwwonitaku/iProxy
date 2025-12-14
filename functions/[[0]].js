@@ -3,28 +3,33 @@ export async function onRequest(context) {
   const url = new URL(request.url);
 
   /* =========================
-     1. HOTLINK PROTECTION
+     1. REFERER PROTECTION
      ========================= */
+
+  const referer = request.headers.get("Referer");
+
+  // Không có referer → redirect
+  if (!referer) {
+    return Response.redirect(
+      "https://www.youtube.com/watch?v=Kq9_r9l8MpI",
+      302
+    );
+  }
+
+  let refererHost;
+  try {
+    refererHost = new URL(referer).hostname;
+  } catch {
+    return new Response("Invalid referer", { status: 403 });
+  }
 
   const ALLOWED_ROOT_DOMAIN = "ssplay.net";
 
-  const referer = request.headers.get("Referer");
-  const origin = request.headers.get("Origin");
+  const isAllowedReferer =
+    refererHost === ALLOWED_ROOT_DOMAIN ||
+    refererHost.endsWith("." + ALLOWED_ROOT_DOMAIN);
 
-  const isAllowedSource = (value) => {
-    if (!value) return true;
-    try {
-      const refUrl = new URL(value);
-      return (
-        refUrl.hostname === ALLOWED_ROOT_DOMAIN ||
-        refUrl.hostname.endsWith("." + ALLOWED_ROOT_DOMAIN)
-      );
-    } catch {
-      return false;
-    }
-  };
-
-  if (!isAllowedSource(referer) || !isAllowedSource(origin)) {
+  if (!isAllowedReferer) {
     return new Response("Hotlink denied", { status: 403 });
   }
 
@@ -32,14 +37,15 @@ export async function onRequest(context) {
      2. VALIDATE HOSTNAME
      ========================= */
 
-  const host = url.hostname;
-  const hostMatch = host.match(/^scontent-x([0-9]{2})-fbcdn\.ssplay\.net$/i);
+  const hostMatch = url.hostname.match(
+    /^scontent-x([a-z0-9]{2})-fbcdn\.ssplay\.net$/i
+  );
 
   if (!hostMatch) {
     return new Response("Invalid host", { status: 403 });
   }
 
-  const shardId = hostMatch[1]; // ab
+  const shardId = hostMatch[1];
 
   /* =========================
      3. PATH & EXTENSION
@@ -47,8 +53,19 @@ export async function onRequest(context) {
 
   const pathname = url.pathname.replace(/^\/+/, "");
 
-  if (!pathname || !pathname.toLowerCase().endsWith(".png")) {
-    return new Response("File not allowed", { status: 403 });
+  if (!pathname) {
+    return new Response("Not found", { status: 404 });
+  }
+
+  const allowedExtensions = [".png", ".m3u8", ".html"];
+  const lowerPath = pathname.toLowerCase();
+
+  const isAllowedExt = allowedExtensions.some(ext =>
+    lowerPath.endsWith(ext)
+  );
+
+  if (!isAllowedExt) {
+    return new Response("File type not allowed", { status: 403 });
   }
 
   /* =========================
@@ -94,6 +111,7 @@ export async function onRequest(context) {
      ========================= */
 
   const headers = new Headers(originResponse.headers);
+
   headers.set("Cache-Control", "public, max-age=31536000, immutable");
   headers.set("X-Content-Type-Options", "nosniff");
 
