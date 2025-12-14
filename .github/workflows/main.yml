@@ -33,3 +33,4 @@ jobs:
           accountId: ${{ inputs.account_id }}
           apiToken: ${{ inputs.api_token }}
           branch: main
+          directory: .
