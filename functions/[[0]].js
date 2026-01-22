@@ -25,7 +25,6 @@ export async function onRequest(context) {
      ========================= */
 
   const referer = request.headers.get("Referer");
-
   if (!referer) {
     return Response.redirect(
       "https://www.youtube.com/watch?v=Kq9_r9l8MpI",
@@ -56,7 +55,7 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     4. PATH
+     4. PATHNAME
      ========================= */
 
   const pathname = url.pathname.replace(/^\/+/, "");
@@ -64,75 +63,61 @@ export async function onRequest(context) {
     return new Response("Not found", { status: 404 });
   }
 
+  const lower = pathname.toLowerCase();
+
   /* =========================
-     4.1 EXTRACT SHARD ID FROM PATHNAME
+     5. INDEX.HTML → REDIRECT HOME
+     ========================= */
+
+  if (lower === "index.html") {
+    return Response.redirect("https://anisrc.top/", 302);
+  }
+
+  /* =========================
+     6. EXTRACT SHARD ID
      ========================= */
 
   const parts = pathname.split("-");
   const lastPart = parts[parts.length - 1];
+  const shardNum = parseInt(lastPart, 10);
 
-  let shardNum = parseInt(lastPart, 10);
-  let shardId;
-
-  if (shardNum >= 1 && shardNum <= 9) {
-    shardId = shardNum.toString().padStart(2, "0");
-  } else {
-    shardId = shardNum.toString();
+  if (isNaN(shardNum)) {
+    return new Response("Invalid shard", { status: 403 });
   }
 
-  const lower = pathname.toLowerCase();
-  let originUrl;
+  const shardId =
+    shardNum >= 1 && shardNum <= 9
+      ? shardNum.toString().padStart(2, "0")
+      : shardNum.toString();
 
   /* =========================
-     5. GLOBAL FILE
+     7. ALLOWED FILES (.m3u8 | .png)
      ========================= */
 
-  if (lower === "index.html") {
-    originUrl =
-      `https://x${shardId}-anisrc-top.pages.dev/index.html`;
-  }
-
-  /* =========================
-     6. PREVIEW M3U8
-     ========================= */
-
-  else if (lower.endsWith(".m3u8")) {
-    const previewId = pathname.slice(0, -5);
-
-    originUrl =
-      `https://${pathname}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
-  }
-
-  /* =========================
-     7. PREVIEW PNG
-     ========================= */
-
-  else if (lower.endsWith(".png")) {
-    const dashIndex = pathname.indexOf("-");
-    if (dashIndex === -1) {
-      return new Response("Invalid image name", { status: 403 });
-    }
-
-    const previewId = pathname.slice(0, dashIndex);
-
-    originUrl =
-      `https://${pathname}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
-  }
-
-  /* =========================
-     8. BLOCK ALL OTHERS
-     ========================= */
-
-  else {
+  if (!lower.endsWith(".m3u8") && !lower.endsWith(".png")) {
     return new Response("File not allowed", { status: 403 });
   }
 
+  const dotIndex = pathname.lastIndexOf(".");
+  if (dotIndex === -1) {
+    return new Response("Invalid filename", { status: 403 });
+  }
+
+  const baseName = pathname.slice(0, dotIndex);
+
+  // PNG phải có dấu "-"
+  if (lower.endsWith(".png") && !baseName.includes("-")) {
+    return new Response("Invalid image name", { status: 403 });
+  }
+
+  const originUrl =
+    `https://${baseName}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
+
   /* =========================
-     9. FETCH ORIGIN (CACHE MISS)
+     8. FETCH ORIGIN
      ========================= */
 
   const originResponse = await fetch(originUrl);
-
   if (!originResponse.ok) {
     return new Response("File not found", {
       status: originResponse.status
@@ -140,7 +125,7 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     10. RESPONSE + STORE CACHE
+     9. RESPONSE + CACHE
      ========================= */
 
   const response = new Response(originResponse.body, originResponse);
