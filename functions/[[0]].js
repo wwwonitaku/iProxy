@@ -1,6 +1,6 @@
-const ALLOWED_ROOT_DOMAIN = "ssplay.net";
-const HOST_RE = /^scontent-x([a-z0-9]{2})-fbcdn\.ssplay\.net$/i;
-const ID_RE = /^[a-z0-9]+$/i;
+const ALLOWED_ROOT_DOMAIN = "anisrc.top";
+const HOST_RE = /^x([a-z0-9]{2})\.anisrc\.top$/i;
+const ID_RE = /^[0-9]+$/i;
 
 export async function onRequest(context) {
   const { request } = context;
@@ -77,7 +77,7 @@ export async function onRequest(context) {
 
   if (lower === "index.html") {
     originUrl =
-      `https://scontent-x${shardId}-fbcdn.pages.dev/index.html`;
+      `https://x${shardId}-anisrc-top.pages.dev/index.html`;
   }
 
   /* =========================
@@ -92,7 +92,7 @@ export async function onRequest(context) {
     }
 
     originUrl =
-      `https://${previewId}.scontent-x${shardId}-fbcdn.pages.dev/${pathname}`;
+      `https://${pathname}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
   }
 
   /* =========================
@@ -112,7 +112,7 @@ export async function onRequest(context) {
     }
 
     originUrl =
-      `https://${previewId}.scontent-x${shardId}-fbcdn.pages.dev/${pathname}`;
+      `https://${pathname}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
   }
 
   /* =========================
