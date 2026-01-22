@@ -21,33 +21,37 @@ export async function onRequest(context) {
   const lower = pathname.toLowerCase();
 
   if (!pathname) {
-    return new Response("Not found", { status: 404 });
+    return new Response("404: NOT_FOUND", { status: 404 });
   }
+
+  const isPng = lower.endsWith(".png");
+  const isM3u8 = lower.endsWith(".m3u8");
 
   /* =========================
      2. REFERER CHECK
      ========================= */
 
   const referer = request.headers.get("Referer");
-  if (!referer) {
-    return Response.redirect(
-      "https://www.youtube.com/watch?v=Kq9_r9l8MpI",
-      302
-    );
+
+  // PNG (HLS internal request) thường không có referer
+  if (!referer && !isPng) {
+    return new Response("403: NO_REFERER", { status: 403 });
   }
 
-  let refHost;
-  try {
-    refHost = new URL(referer).hostname;
-  } catch {
-    return new Response("Invalid referer", { status: 403 });
-  }
+  if (referer) {
+    let refHost;
+    try {
+      refHost = new URL(referer).hostname;
+    } catch {
+      return new Response("403: INVALID_REFERER", { status: 403 });
+    }
 
-  if (
-    refHost !== ALLOWED_ROOT_DOMAIN &&
-    !refHost.endsWith("." + ALLOWED_ROOT_DOMAIN)
-  ) {
-    return new Response("Hotlink denied", { status: 403 });
+    if (
+      refHost !== ALLOWED_ROOT_DOMAIN &&
+      !refHost.endsWith("." + ALLOWED_ROOT_DOMAIN)
+    ) {
+      return new Response("403: HOTLINK_DENIED", { status: 403 });
+    }
   }
 
   /* =========================
@@ -55,7 +59,7 @@ export async function onRequest(context) {
      ========================= */
 
   if (!HOST_RE.test(url.hostname)) {
-    return new Response("Invalid host", { status: 403 });
+    return new Response("403: INVALID_HOST", { status: 403 });
   }
 
   /* =========================
@@ -74,7 +78,7 @@ export async function onRequest(context) {
   const shardNum = parseInt(parts[parts.length - 1], 10);
 
   if (isNaN(shardNum)) {
-    return new Response("Invalid shard", { status: 403 });
+    return new Response("403: INVALID_SHARD", { status: 403 });
   }
 
   const shardId =
@@ -88,22 +92,22 @@ export async function onRequest(context) {
 
   let videoId;
 
-  // m3u8 → videoId chính là basename
-  if (lower.endsWith(".m3u8")) {
+  // m3u8
+  if (isM3u8) {
     videoId = pathname.slice(0, -5);
   }
 
-  // png → luôn dùng videoId của m3u8 cha
-  else if (lower.endsWith(".png")) {
+  // png (index + indexXXXXX)
+  else if (isPng) {
     const match = pathname.match(/^(tv-\d+-\d+-\d+)-index/i);
     if (!match) {
-      return new Response("Invalid preview image", { status: 403 });
+      return new Response("403: INVALID_PNG_NAME", { status: 403 });
     }
     videoId = match[1];
   }
 
   else {
-    return new Response("File not allowed", { status: 403 });
+    return new Response("403: FILE_NOT_ALLOWED", { status: 403 });
   }
 
   /* =========================
@@ -119,9 +123,10 @@ export async function onRequest(context) {
 
   const originRes = await fetch(originUrl);
   if (!originRes.ok) {
-    return new Response("File not found", {
-      status: originRes.status
-    });
+    return new Response(
+      `404: ORIGIN_NOT_FOUND (${originRes.status})`,
+      { status: originRes.status }
+    );
   }
 
   /* =========================
