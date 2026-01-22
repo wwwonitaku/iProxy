@@ -16,7 +16,7 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     1. PARSE URL (SAU CACHE)
+     1. PARSE URL
      ========================= */
 
   const url = new URL(request.url);
@@ -52,12 +52,9 @@ export async function onRequest(context) {
      3. VALIDATE HOSTNAME
      ========================= */
 
-  const hostMatch = HOST_RE.exec(url.hostname);
-  if (!hostMatch) {
+  if (!HOST_RE.test(url.hostname)) {
     return new Response("Invalid host", { status: 403 });
   }
-
-  const shardId = hostMatch[1];
 
   /* =========================
      4. PATH
@@ -66,6 +63,26 @@ export async function onRequest(context) {
   const pathname = url.pathname.replace(/^\/+/, "");
   if (!pathname) {
     return new Response("Not found", { status: 404 });
+  }
+
+  /* =========================
+     4.1 EXTRACT SHARD ID FROM PATHNAME
+     ========================= */
+
+  const parts = pathname.split("-");
+  const lastPart = parts[parts.length - 1];
+
+  if (!ID_RE.test(lastPart)) {
+    return new Response("Invalid shard id", { status: 403 });
+  }
+
+  let shardNum = parseInt(lastPart, 10);
+  let shardId;
+
+  if (shardNum >= 1 && shardNum <= 9) {
+    shardId = shardNum.toString().padStart(2, "0");
+  } else {
+    shardId = shardNum.toString();
   }
 
   const lower = pathname.toLowerCase();
