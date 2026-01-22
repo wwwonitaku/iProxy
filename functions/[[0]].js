@@ -5,15 +5,27 @@ export async function onRequest(context) {
   const { request } = context;
   const cache = caches.default;
 
+  /* =========================
+     0. WORKER CACHE
+     ========================= */
+
   const cached = await cache.match(request);
   if (cached) return cached;
+
+  /* =========================
+     1. PARSE URL
+     ========================= */
 
   const url = new URL(request.url);
   const pathname = url.pathname.replace(/^\/+/, "");
   const lower = pathname.toLowerCase();
 
+  if (!pathname) {
+    return new Response("Not found", { status: 404 });
+  }
+
   /* =========================
-     REFERER CHECK
+     2. REFERER CHECK
      ========================= */
 
   const referer = request.headers.get("Referer");
@@ -39,7 +51,7 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     HOST CHECK
+     3. HOST CHECK
      ========================= */
 
   if (!HOST_RE.test(url.hostname)) {
@@ -47,7 +59,7 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     INDEX REDIRECT
+     4. INDEX REDIRECT
      ========================= */
 
   if (lower === "index.html") {
@@ -55,11 +67,12 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     SHARD ID (từ pathname)
+     5. EXTRACT SHARD ID (from filename)
      ========================= */
 
   const parts = pathname.split("-");
   const shardNum = parseInt(parts[parts.length - 1], 10);
+
   if (isNaN(shardNum)) {
     return new Response("Invalid shard", { status: 403 });
   }
@@ -69,20 +82,18 @@ export async function onRequest(context) {
       ? shardNum.toString().padStart(2, "0")
       : shardNum.toString();
 
-  let videoId;
-
   /* =========================
-     M3U8
+     6. DETERMINE VIDEO ID
      ========================= */
 
+  let videoId;
+
+  // m3u8 → videoId chính là basename
   if (lower.endsWith(".m3u8")) {
     videoId = pathname.slice(0, -5);
   }
 
-  /* =========================
-     PNG (index + indexXXXXX)
-     ========================= */
-
+  // png → luôn dùng videoId của m3u8 cha
   else if (lower.endsWith(".png")) {
     const match = pathname.match(/^(tv-\d+-\d+-\d+)-index/i);
     if (!match) {
@@ -96,11 +107,15 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     ORIGIN URL
+     7. ORIGIN URL
      ========================= */
 
   const originUrl =
     `https://${videoId}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
+
+  /* =========================
+     8. FETCH ORIGIN
+     ========================= */
 
   const originRes = await fetch(originUrl);
   if (!originRes.ok) {
@@ -109,7 +124,12 @@ export async function onRequest(context) {
     });
   }
 
+  /* =========================
+     9. RESPONSE + CACHE
+     ========================= */
+
   const res = new Response(originRes.body, originRes);
+
   res.headers.set(
     "Cache-Control",
     "public, max-age=31536000, immutable"
