@@ -3,25 +3,17 @@ const HOST_RE = /^x([0-9]{2})\.anisrc\.top$/i;
 
 export async function onRequest(context) {
   const { request } = context;
-
-  /* =========================
-     0. WORKER CACHE (EARLY RETURN)
-     ========================= */
-
   const cache = caches.default;
-  const cachedResponse = await cache.match(request);
-  if (cachedResponse) {
-    return cachedResponse;
-  }
 
-  /* =========================
-     1. PARSE URL
-     ========================= */
+  const cached = await cache.match(request);
+  if (cached) return cached;
 
   const url = new URL(request.url);
+  const pathname = url.pathname.replace(/^\/+/, "");
+  const lower = pathname.toLowerCase();
 
   /* =========================
-     2. REFERER PROTECTION
+     REFERER CHECK
      ========================= */
 
   const referer = request.headers.get("Referer");
@@ -32,22 +24,22 @@ export async function onRequest(context) {
     );
   }
 
-  let refererHost;
+  let refHost;
   try {
-    refererHost = new URL(referer).hostname;
+    refHost = new URL(referer).hostname;
   } catch {
     return new Response("Invalid referer", { status: 403 });
   }
 
   if (
-    refererHost !== ALLOWED_ROOT_DOMAIN &&
-    !refererHost.endsWith("." + ALLOWED_ROOT_DOMAIN)
+    refHost !== ALLOWED_ROOT_DOMAIN &&
+    !refHost.endsWith("." + ALLOWED_ROOT_DOMAIN)
   ) {
     return new Response("Hotlink denied", { status: 403 });
   }
 
   /* =========================
-     3. VALIDATE HOSTNAME
+     HOST CHECK
      ========================= */
 
   if (!HOST_RE.test(url.hostname)) {
@@ -55,18 +47,7 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     4. PATHNAME
-     ========================= */
-
-  const pathname = url.pathname.replace(/^\/+/, "");
-  if (!pathname) {
-    return new Response("Not found", { status: 404 });
-  }
-
-  const lower = pathname.toLowerCase();
-
-  /* =========================
-     5. INDEX.HTML → REDIRECT HOME
+     INDEX REDIRECT
      ========================= */
 
   if (lower === "index.html") {
@@ -74,13 +55,11 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     6. EXTRACT SHARD ID
+     SHARD ID (từ pathname)
      ========================= */
 
   const parts = pathname.split("-");
-  const lastPart = parts[parts.length - 1];
-  const shardNum = parseInt(lastPart, 10);
-
+  const shardNum = parseInt(parts[parts.length - 1], 10);
   if (isNaN(shardNum)) {
     return new Response("Invalid shard", { status: 403 });
   }
@@ -90,53 +69,53 @@ export async function onRequest(context) {
       ? shardNum.toString().padStart(2, "0")
       : shardNum.toString();
 
+  let videoId;
+
   /* =========================
-     7. ALLOWED FILES (.m3u8 | .png)
+     M3U8
      ========================= */
 
-  if (!lower.endsWith(".m3u8") && !lower.endsWith(".png")) {
+  if (lower.endsWith(".m3u8")) {
+    videoId = pathname.slice(0, -5);
+  }
+
+  /* =========================
+     PNG (index + indexXXXXX)
+     ========================= */
+
+  else if (lower.endsWith(".png")) {
+    const match = pathname.match(/^(tv-\d+-\d+-\d+)-index/i);
+    if (!match) {
+      return new Response("Invalid preview image", { status: 403 });
+    }
+    videoId = match[1];
+  }
+
+  else {
     return new Response("File not allowed", { status: 403 });
   }
 
-  const dotIndex = pathname.lastIndexOf(".");
-  if (dotIndex === -1) {
-    return new Response("Invalid filename", { status: 403 });
-  }
-
-  const baseName = pathname.slice(0, dotIndex);
-
-  // PNG phải có dấu "-"
-  if (lower.endsWith(".png") && !baseName.includes("-")) {
-    return new Response("Invalid image name", { status: 403 });
-  }
-
-  const originUrl =
-    `https://${baseName}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
-
   /* =========================
-     8. FETCH ORIGIN
+     ORIGIN URL
      ========================= */
 
-  const originResponse = await fetch(originUrl);
-  if (!originResponse.ok) {
+  const originUrl =
+    `https://${videoId}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
+
+  const originRes = await fetch(originUrl);
+  if (!originRes.ok) {
     return new Response("File not found", {
-      status: originResponse.status
+      status: originRes.status
     });
   }
 
-  /* =========================
-     9. RESPONSE + CACHE
-     ========================= */
-
-  const response = new Response(originResponse.body, originResponse);
-
-  response.headers.set(
+  const res = new Response(originRes.body, originRes);
+  res.headers.set(
     "Cache-Control",
     "public, max-age=31536000, immutable"
   );
-  response.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("X-Content-Type-Options", "nosniff");
 
-  await cache.put(request, response.clone());
-
-  return response;
+  await cache.put(request, res.clone());
+  return res;
 }
