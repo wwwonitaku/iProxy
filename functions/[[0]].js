@@ -1,6 +1,5 @@
 const ALLOWED_ROOT_DOMAIN = "anisrc.top";
-const HOST_RE = /^x([a-z0-9]{2})\.anisrc\.top$/i;
-const ID_RE = /^[0-9]+$/i;
+const HOST_RE = /^x([0-9]{2})\.anisrc\.top$/i;
 
 export async function onRequest(context) {
   const { request } = context;
@@ -72,10 +71,6 @@ export async function onRequest(context) {
   const parts = pathname.split("-");
   const lastPart = parts[parts.length - 1];
 
-  if (!ID_RE.test(lastPart)) {
-    return new Response("Invalid shard id", { status: 403 });
-  }
-
   let shardNum = parseInt(lastPart, 10);
   let shardId;
 
@@ -104,10 +99,6 @@ export async function onRequest(context) {
   else if (lower.endsWith(".m3u8")) {
     const previewId = pathname.slice(0, -5);
 
-    if (!ID_RE.test(previewId)) {
-      return new Response("Invalid preview id", { status: 403 });
-    }
-
     originUrl =
       `https://${pathname}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
   }
@@ -123,10 +114,6 @@ export async function onRequest(context) {
     }
 
     const previewId = pathname.slice(0, dashIndex);
-
-    if (!ID_RE.test(previewId)) {
-      return new Response("Invalid preview id", { status: 403 });
-    }
 
     originUrl =
       `https://${pathname}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
