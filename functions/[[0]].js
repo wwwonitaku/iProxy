@@ -134,6 +134,11 @@ export async function onRequest(context) {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Access-Control-Allow-Origin", "*");
 
+  if (isM4s) {
+  res.headers.delete("Accept-Ranges");
+  res.headers.delete("Content-Range");
+  }
+  
   await cache.put(cacheKey, res.clone());
   return res;
 }
