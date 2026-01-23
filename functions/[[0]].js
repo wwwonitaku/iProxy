@@ -6,17 +6,19 @@ export async function onRequest(context) {
   const cache = caches.default;
 
   /* =========================
-     0. CACHE
-     ========================= */
-
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  /* =========================
-     1. PARSE URL
+     0. CACHE (URL-ONLY KEY)
      ========================= */
 
   const url = new URL(request.url);
+
+  // cache key KHÔNG có headers (chia sẻ cho mọi referer)
+  const cacheKey = new Request(url.toString(), {
+    method: "GET"
+  });
+
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
   const pathname = url.pathname.replace(/^\/+/, "");
   const lower = pathname.toLowerCase();
 
@@ -26,6 +28,7 @@ export async function onRequest(context) {
 
   const isM3u8 = lower.endsWith(".m3u8");
   const isPng  = lower.endsWith(".png");
+  const isM4s  = lower.endsWith(".m4s");
 
   /* =========================
      2. REFERER PROTECTION
@@ -33,7 +36,7 @@ export async function onRequest(context) {
 
   const referer = request.headers.get("Referer");
 
-  // m3u8 phải có referer, png thì không bắt buộc (HLS internal)
+  // m3u8 phải có referer
   if (!referer && isM3u8) {
     return new Response("Forbidden", { status: 403 });
   }
@@ -63,7 +66,7 @@ export async function onRequest(context) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const shardId = hostMatch[1]; // "01"
+  const shardId = hostMatch[1];
 
   /* =========================
      4. INDEX REDIRECT
@@ -83,6 +86,13 @@ export async function onRequest(context) {
     videoId = pathname.slice(0, -5);
   } 
   else if (isPng) {
+    const match = pathname.match(/^(tv-\d+-\d+-\d+)-index/i);
+    if (!match) {
+      return new Response("Forbidden", { status: 403 });
+    }
+    videoId = match[1];
+  } 
+  else if (isM4s) {
     const match = pathname.match(/^(tv-\d+-\d+-\d+)-index/i);
     if (!match) {
       return new Response("Forbidden", { status: 403 });
@@ -121,6 +131,8 @@ export async function onRequest(context) {
   );
   res.headers.set("X-Content-Type-Options", "nosniff");
 
-  await cache.put(request, res.clone());
+  // LƯU BẰNG cacheKey (URL-only)
+  await cache.put(cacheKey, res.clone());
+
   return res;
 }
