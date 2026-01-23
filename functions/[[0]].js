@@ -5,19 +5,19 @@ export async function onRequest(context) {
   const { request } = context;
   const cache = caches.default;
 
-  /* =========================
-     0. CACHE (URL-ONLY KEY)
-     ========================= */
-
   const url = new URL(request.url);
 
-  // cache key KHÔNG có headers (chia sẻ cho mọi referer)
-  const cacheKey = new Request(url.toString(), {
-    method: "GET"
-  });
+  /* =========================
+     0. CACHE KEY (URL ONLY)
+     ========================= */
 
+  const cacheKey = new Request(url.toString(), { method: "GET" });
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
+
+  /* =========================
+     1. PATH CHECK
+     ========================= */
 
   const pathname = url.pathname.replace(/^\/+/, "");
   const lower = pathname.toLowerCase();
@@ -36,8 +36,7 @@ export async function onRequest(context) {
 
   const referer = request.headers.get("Referer");
 
-  // m3u8 phải có referer
-  if (!referer && isM3u8) {
+  if (isM3u8 && !referer) {
     return new Response("Forbidden", { status: 403 });
   }
 
@@ -84,22 +83,13 @@ export async function onRequest(context) {
 
   if (isM3u8) {
     videoId = pathname.slice(0, -5);
-  } 
-  else if (isPng) {
+  } else if (isPng || isM4s) {
     const match = pathname.match(/^(tv-\d+-\d+-\d+)-index/i);
     if (!match) {
       return new Response("Forbidden", { status: 403 });
     }
     videoId = match[1];
-  } 
-  else if (isM4s) {
-    const match = pathname.match(/^(tv-\d+-\d+-\d+)-index/i);
-    if (!match) {
-      return new Response("Forbidden", { status: 403 });
-    }
-    videoId = match[1];
-  } 
-  else {
+  } else {
     return new Response("Forbidden", { status: 403 });
   }
 
@@ -111,10 +101,22 @@ export async function onRequest(context) {
     `https://${videoId}.x${shardId}-anisrc-top.pages.dev/${pathname}`;
 
   /* =========================
-     7. FETCH ORIGIN
+     7. FETCH ORIGIN (TÁCH RIÊNG PNG / M4S)
      ========================= */
 
-  const originRes = await fetch(originUrl);
+  let originRes;
+
+  if (isM4s) {
+    // 🔥 CHỈ m4s mới strip Range
+    const headers = new Headers(request.headers);
+    headers.delete("Range");
+
+    originRes = await fetch(originUrl, { headers });
+  } else {
+    // PNG + M3U8 giữ nguyên như cũ
+    originRes = await fetch(originUrl, request);
+  }
+
   if (!originRes.ok) {
     return new Response("Not found", { status: 404 });
   }
@@ -130,9 +132,8 @@ export async function onRequest(context) {
     "public, max-age=31536000, immutable"
   );
   res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("Access-Control-Allow-Origin", "*");
 
-  // LƯU BẰNG cacheKey (URL-only)
   await cache.put(cacheKey, res.clone());
-
   return res;
 }
