@@ -139,6 +139,8 @@ export async function onRequest(context) {
   res.headers.delete("Content-Range");
   }
   
+  if (res.status === 200) {
   await cache.put(cacheKey, res.clone());
+  }
   return res;
 }
