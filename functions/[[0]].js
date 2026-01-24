@@ -84,7 +84,7 @@ export async function onRequest(context) {
   if (isM3u8) {
     videoId = pathname.slice(0, -5);
   } else if (isPng || isM4s) {
-    const match = pathname.match(/^(tv-\d+-\d+-\d+)-index/i);
+    const match = pathname.match(/^((?:tv|mv)-\d+-\d+-\d+)-index/i);
     if (!match) {
       return new Response("Forbidden", { status: 403 });
     }
